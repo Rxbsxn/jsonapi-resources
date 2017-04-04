@@ -50,7 +50,7 @@ module JSONAPI
     def type_for_source(source)
       if polymorphic?
         model = source._model.public_send(@relation_name)
-        source.class.resource_for_model(model)._type if model
+        source.class.resource_klass_for_model(model)._type if model
       else
         type
       end
