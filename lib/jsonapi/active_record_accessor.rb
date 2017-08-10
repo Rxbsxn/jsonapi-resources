@@ -211,8 +211,15 @@ module JSONAPI
 
     def apply_sort(records, order_options, context = {})
       if defined?(_resource_klass.apply_sort)
-        _resource_klass.apply_sort(records, order_options, context)
+        custom_sort = _resource_klass.apply_sort(records, order_options, context)
+        custom_sort.nil? ? default_sort(records, order_options, context) : custom_sort
       else
+        default_sort(records, order_options, context)
+      end
+    end
+
+    def default_sort(records, order_options, context)
+      if order_options.any?
         order_options.each_pair do |field, direction|
           custom_sort = _resource_klass._custom_sorts.fetch(field.to_sym, Hash.new)[:apply]
 
@@ -222,24 +229,23 @@ module JSONAPI
             else
               records = _resource_klass.instance_exec(records, direction, context, &custom_sort)
             end
+          elsif field.to_s.include?(".")
+            *model_names, column_name = field.split(".")
+
+            associations = _lookup_association_chain([records.model.to_s, *model_names])
+            joins_query = _build_joins([records.model, *associations])
+
+            # _sorting is appended to avoid name clashes with manual joins eg. overridden filters
+            order_by_query = "#{associations.last.name}_sorting.#{column_name} #{direction}"
+            records = records.joins(joins_query).order(order_by_query)
           else
-            if field.to_s.include?(".")
-              *model_names, column_name = field.split(".")
-
-              associations = _lookup_association_chain([records.model.to_s, *model_names])
-              joins_query = _build_joins([records.model, *associations])
-
-              # _sorting is appended to avoid name clashes with manual joins eg. overridden filters
-              order_by_query = "#{associations.last.name}_sorting.#{column_name} #{direction}"
-              records = records.joins(joins_query).order(order_by_query)
-            else
-              records = records.order(field => direction)
-            end
+            field = _resource_klass._attribute_delegated_name(field)
+            records = records.order(field => direction)
           end
         end
-
-        records
       end
+
+      records
     end
 
     def _lookup_association_chain(model_names)
@@ -282,6 +288,7 @@ module JSONAPI
             records.where("#{_resource_klass._relationships[filter].table_name}.#{_resource_klass._relationships[filter].primary_key}" => value)
           end
         else
+          filter = _resource_klass._attribute_delegated_name(filter)
           records.where(filter => value)
         end
       end

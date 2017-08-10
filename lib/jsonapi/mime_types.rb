@@ -24,7 +24,7 @@ module JSONAPI
         begin
           data = JSON.parse(body)
           if data.is_a?(Hash)
-            data.with_indifferent_access
+            data.stringify_keys
           else
             fail JSONAPI::Exceptions::InvalidRequestFormat.new
           end
